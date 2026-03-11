@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strava Kudos Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --orange: #FC4C02;
+    --orange-dim: #cc3c01;
+    --dark: #0d0d0d;
+    --mid: #1a1a1a;
+    --surface: #222222;
+    --border: #333;
+    --text: #f0ede8;
+    --muted: #888;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* HEADER */
+  header {
+    padding: 48px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+
+  .strava-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--orange);
+    clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.5rem, 6vw, 4rem);
+    letter-spacing: 0.05em;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  h1 span { color: var(--orange); }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-top: 4px;
+    font-weight: 300;
+  }
+
+  /* CONNECT PANEL */
+  .connect-panel {
+    background: var(--mid);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    margin-bottom: 40px;
+  }
+
+  .connect-panel h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.6rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+
+  .connect-panel p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+
+  .step-num {
+    background: var(--orange);
+    color: white;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .step a { color: var(--orange); text-decoration: none; }
+  .step a:hover { text-decoration: underline; }
+
+  .input-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus { border-color: var(--orange); }
+  input[type="text"]::placeholder { color: var(--muted); }
+
+  .btn {
+    background: var(--orange);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: var(--orange-dim); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover { background: var(--border); }
+
+  /* LOADING */
+  .loading {
+    display: none;
+    text-align: center;
+    padding: 60px 0;
+  }
+
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--orange);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-msg {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  /* ERROR */
+  .error-box {
+    display: none;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    color: #fca5a5;
+    font-size: 0.88rem;
+    margin-top: 16px;
+  }
+
+  /* RESULTS */
+  #results { display: none; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: var(--mid);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .stat-card:nth-child(2) { animation-delay: 0.05s; }
+  .stat-card:nth-child(3) { animation-delay: 0.1s; }
+  .stat-card:nth-child(4) { animation-delay: 0.15s; }
+
+  .stat-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.8rem;
+    color: var(--orange);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* SECTION */
+  .section {
+    margin-bottom: 48px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-icon {
+    font-size: 1.2rem;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.5rem;
+    letter-spacing: 0.05em;
+  }
+
+  .section-count {
+    margin-left: auto;
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* ATHLETE ROW */
+  .athlete-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .athlete-row {
+    background: var(--mid);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.2s;
+    animation: fadeUp 0.3s ease both;
+  }
+
+  .athlete-row:hover { border-color: var(--orange); }
+
+  .rank {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    color: var(--muted);
+    width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .rank-1 { color: #ffd700; }
+  .rank-2 { color: #c0c0c0; }
+  .rank-3 { color: #cd7f32; }
+
+  .avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+
+  .avatar-placeholder {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  .athlete-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .athlete-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .athlete-meta {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 2px;
+  }
+
+  .athlete-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .kudos-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    color: var(--orange);
+    line-height: 1;
+  }
+
+  .kudos-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .bar-bg {
+    height: 4px;
+    background: var(--surface);
+    border-radius: 4px;
+    margin-top: 6px;
+    width: 80px;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--orange);
+    border-radius: 4px;
+    transition: width 0.8s ease;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 500;
+  }
+
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    gap: 0;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .tab.active {
+    background: var(--orange);
+    color: white;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* RESET */
+  .reset-row {
+    text-align: center;
+    padding: 20px 0 60px;
+  }
+
+  .note {
+    background: rgba(252, 76, 2, 0.06);
+    border: 1px solid rgba(252, 76, 2, 0.2);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 0.83rem;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  .note strong { color: var(--orange); }
+
+  @media (max-width: 600px) {
+    .connect-panel { padding: 24px; }
+    .input-row { flex-direction: column; }
+    .btn { width: 100%; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-row">
+      <div class="strava-icon"></div>
+      <h1>KUDOS <span>ANALYZER</span></h1>
+    </div>
+    <p class="subtitle">Analyse tes abonnés & abonnements Strava — qui te supporte vraiment ?</p>
+  </header>
+
+  <!-- CONNECT -->
+  <div class="connect-panel" id="connectPanel">
+    <h2>🔑 Connecte ton compte Strava</h2>
+    <p>Pour accéder à tes données, tu as besoin d'un Access Token Strava. Cela prend ~3 minutes.</p>
+    
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>Va sur <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a> et crée une application (nom & description quelconques, "localhost" comme site web).</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>Copie ton <strong>Client ID</strong> et <strong>Client Secret</strong>. Puis va sur cette URL (remplace CLIENT_ID) :<br>
+        <code style="background:var(--surface);padding:4px 8px;border-radius:4px;font-size:0.82rem;display:inline-block;margin-top:6px;word-break:break-all;">https://www.strava.com/oauth/authorize?client_id=CLIENT_ID&response_type=code&redirect_uri=http://localhost&approval_prompt=auto&scope=read,activity:read,profile:read_all</code></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>Autorise l'accès. Tu seras redirigé vers une URL avec <code style="background:var(--surface);padding:2px 6px;border-radius:4px;font-size:0.82rem;">?code=XXXX</code> — copie ce code.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>Renseigne ton Client ID, Client Secret et le code ci-dessous pour obtenir l'Access Token automatiquement.</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>🔒 Confidentialité :</strong> Tes tokens ne quittent jamais cette page. Tout est traité localement dans ton navigateur. Aucune donnée n'est stockée ou envoyée à un tiers.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+      <div class="input-row">
+        <input type="text" id="clientId" placeholder="Client ID (ex: 12345)">
+        <input type="text" id="clientSecret" placeholder="Client Secret">
+      </div>
+      <div class="input-row">
+        <input type="text" id="authCode" placeholder="Code d'autorisation (depuis l'URL de redirection)">
+        <button class="btn" onclick="getToken()">Obtenir le Token</button>
+      </div>
+    </div>
+
+    <div style="text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:12px;">— ou —</div>
+
+    <div class="input-row">
+      <input type="text" id="tokenInput" placeholder="Access Token (si tu l'as déjà)">
+      <button class="btn" onclick="startAnalysis()">Analyser ▶</button>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+  <!-- LOADING -->
+  <div class="loading" id="loadingPanel">
+    <div class="spinner"></div>
+    <div class="loading-msg" id="loadingMsg">Connexion à Strava...</div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results">
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('kudos')">🏆 Kudos reçus</button>
+      <button class="tab" onclick="switchTab('given')">👍 Kudos donnés</button>
+      <button class="tab" onclick="switchTab('inactive')">😴 Peu actifs</button>
+      <button class="tab" onclick="switchTab('muted')">🤫 Fantômes</button>
+    </div>
+
+    <div id="tab-kudos" class="tab-panel active">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">🥇</span>
+          <span class="section-title">Top Supporters</span>
+          <span class="section-count" id="topCount"></span>
+        </div>
+        <div class="athlete-list" id="topKudos"></div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">💤</span>
+          <span class="section-title">Qui ne te donne pas de kudos</span>
+          <span class="section-count" id="bottomCount"></span>
+        </div>
+        <div class="athlete-list" id="bottomKudos"></div>
+      </div>
+    </div>
+
+    <div id="tab-given" class="tab-panel">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">💪</span>
+          <span class="section-title">À qui tu donnes le plus de kudos</span>
+        </div>
+        <div class="athlete-list" id="givenList"></div>
+      </div>
+    </div>
+
+    <div id="tab-inactive" class="tab-panel">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">📉</span>
+          <span class="section-title">Abonnés peu actifs (peu de sorties récentes)</span>
+        </div>
+        <div class="athlete-list" id="inactiveList"></div>
+      </div>
+    </div>
+
+    <div id="tab-muted" class="tab-panel">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">👻</span>
+          <span class="section-title">Fantômes — Te suivent mais n'interagissent jamais</span>
+        </div>
+        <div class="athlete-list" id="ghostList"></div>
+      </div>
+    </div>
+
+    <div class="reset-row">
+      <button class="btn btn-secondary" onclick="reset()">← Nouvelle analyse</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let accessToken = null;
+let athleteData = {};
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.style.display = 'block';
+  box.textContent = msg;
+}
+
+function hideError() {
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+async function getToken() {
+  hideError();
+  const clientId = document.getElementById('clientId').value.trim();
+  const clientSecret = document.getElementById('clientSecret').value.trim();
+  const code = document.getElementById('authCode').value.trim();
+
+  if (!clientId || !clientSecret || !code) {
+    showError('Veuillez remplir le Client ID, Client Secret et le Code d\'autorisation.');
+    return;
+  }
+
+  try {
+    const resp = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const data = await resp.json();
+    if (data.access_token) {
+      document.getElementById('tokenInput').value = data.access_token;
+      showError('✅ Token obtenu ! Clique sur "Analyser" pour continuer.');
+      document.getElementById('errorBox').style.background = 'rgba(34,197,94,0.1)';
+      document.getElementById('errorBox').style.borderColor = 'rgba(34,197,94,0.3)';
+      document.getElementById('errorBox').style.color = '#86efac';
+    } else {
+      showError('Erreur : ' + (data.message || JSON.stringify(data)));
+    }
+  } catch (e) {
+    showError('Erreur réseau : ' + e.message);
+  }
+}
+
+async function startAnalysis() {
+  hideError();
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) {
+    showError('Veuillez entrer un Access Token.');
+    return;
+  }
+  accessToken = token;
+
+  document.getElementById('connectPanel').style.display = 'none';
+  document.getElementById('loadingPanel').style.display = 'block';
+
+  try {
+    await runAnalysis();
+  } catch (e) {
+    document.getElementById('loadingPanel').style.display = 'none';
+    document.getElementById('connectPanel').style.display = 'block';
+    showError('Erreur : ' + e.message + '. Vérifie ton token.');
+  }
+}
+
+function setLoading(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+}
+
+async function fetchStrava(path) {
+  const resp = await fetch('https://www.strava.com/api/v3' + path, {
+    headers: { 'Authorization': 'Bearer ' + accessToken }
+  });
+  if (!resp.ok) throw new Error('API Strava: ' + resp.status + ' ' + resp.statusText);
+  return resp.json();
+}
+
+async function fetchAllPages(path) {
+  let page = 1, all = [];
+  while (true) {
+    const sep = path.includes('?') ? '&' : '?';
+    const data = await fetchStrava(path + sep + 'per_page=200&page=' + page);
+    if (!data.length) break;
+    all = all.concat(data);
+    if (data.length < 200) break;
+    page++;
+  }
+  return all;
+}
+
+async function runAnalysis() {
+  setLoading('Récupération de ton profil...');
+  const me = await fetchStrava('/athlete');
+
+  setLoading('Récupération de tes abonnés...');
+  const followers = await fetchAllPages('/athletes/' + me.id + '/followers');
+
+  setLoading('Récupération de tes abonnements...');
+  const following = await fetchAllPages('/athletes/' + me.id + '/following');
+
+  setLoading('Récupération de tes activités récentes...');
+  const activities = await fetchAllPages('/athlete/activities?per_page=100');
+
+  // Build kudos map: who kudosed my activities
+  const kudosReceivedMap = {}; // athleteId -> count
+  const activityCount = Math.min(activities.length, 30);
+
+  setLoading(`Analyse des kudos sur tes ${activityCount} dernières activités...`);
+
+  for (let i = 0; i < activityCount; i++) {
+    const act = activities[i];
+    setLoading(`Analyse activité ${i+1}/${activityCount}...`);
+    try {
+      const kudoers = await fetchStrava('/activities/' + act.id + '/kudos?per_page=200');
+      for (const k of kudoers) {
+        kudosReceivedMap[k.id] = (kudosReceivedMap[k.id] || 0) + 1;
+      }
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 150));
+    } catch (e) { /* skip */ }
+  }
+
+  // Build athlete index from followers + following
+  const allAthletes = {};
+  for (const f of [...followers, ...following]) {
+    allAthletes[f.id] = f;
+  }
+
+  // Followers who give kudos
+  const followerKudos = followers.map(f => ({
+    ...f,
+    kudosGiven: kudosReceivedMap[f.id] || 0
+  })).sort((a, b) => b.kudosGiven - a.kudosGiven);
+
+  const maxKudos = followerKudos[0]?.kudosGiven || 1;
+
+  // Following: how many kudos you give them (from their activities feed)
+  // We approximate with who appeared in your feed recently
+  // For "peu actifs" we check their stats
+  setLoading('Finalisation de l\'analyse...');
+
+  // Render
+  renderStats(me, activities, followers, following, followerKudos, activityCount);
+  renderKudos(followerKudos, maxKudos);
+  renderInactive(following);
+  renderGhosts(followers, kudosReceivedMap);
+
+  document.getElementById('loadingPanel').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+}
+
+function renderStats(me, activities, followers, following, followerKudos, analyzed) {
+  const totalKudos = Object.values(followerKudos.reduce((acc, f) => {
+    acc[f.id] = f;
+    return acc;
+  }, {})).reduce((sum, f) => sum + f.kudosGiven, 0);
+
+  const supporters = followerKudos.filter(f => f.kudosGiven > 0).length;
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value">${followers.length}</div>
+      <div class="stat-label">Abonnés</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${following.length}</div>
+      <div class="stat-label">Abonnements</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${activities.length}</div>
+      <div class="stat-label">Activités totales</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${supporters}</div>
+      <div class="stat-label">Supporters actifs</div>
+    </div>
+  `;
+}
+
+function athleteAvatar(a) {
+  if (a.profile && !a.profile.includes('avatar/athlete/large')) {
+    return `<img class="avatar" src="${a.profile}" alt="" onerror="this.style.display='none'">`;
+  }
+  const initials = ((a.firstname || '?')[0] + (a.lastname || '?')[0]).toUpperCase();
+  return `<div class="avatar-placeholder">${initials}</div>`;
+}
+
+function renderKudos(followerKudos, maxKudos) {
+  const top = followerKudos.filter(f => f.kudosGiven > 0).slice(0, 20);
+  const bottom = followerKudos.filter(f => f.kudosGiven === 0).slice(0, 20);
+
+  document.getElementById('topCount').textContent = top.length + ' supporters';
+  document.getElementById('bottomCount').textContent = bottom.length + ' fantômes';
+
+  document.getElementById('topKudos').innerHTML = top.map((f, i) => `
+    <div class="athlete-row" style="animation-delay:${i*0.03}s">
+      <div class="rank ${i<3?'rank-'+(i+1):''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+      ${athleteAvatar(f)}
+      <div class="athlete-info">
+        <div class="athlete-name">${f.firstname} ${f.lastname}</div>
+        <div class="athlete-meta">Abonné</div>
+      </div>
+      <div class="athlete-stat">
+        <div class="kudos-value">${f.kudosGiven}</div>
+        <div class="kudos-label">kudos</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(f.kudosGiven/maxKudos*100)}%"></div></div>
+      </div>
+    </div>
+  `).join('') || '<div style="color:var(--muted);padding:20px;text-align:center">Aucun kudos trouvé sur les activités analysées.</div>';
+
+  document.getElementById('bottomKudos').innerHTML = bottom.map((f, i) => `
+    <div class="athlete-row" style="animation-delay:${i*0.03}s">
+      <div class="rank">${i+1}</div>
+      ${athleteAvatar(f)}
+      <div class="athlete-info">
+        <div class="athlete-name">${f.firstname} ${f.lastname}</div>
+        <div class="athlete-meta">Abonné</div>
+      </div>
+      <div class="athlete-stat">
+        <span class="badge badge-red">0 kudos</span>
+      </div>
+    </div>
+  `).join('') || '<div style="color:var(--muted);padding:20px;text-align:center">🎉 Tout le monde te soutient !</div>';
+
+  // Given — placeholder since Strava API doesn't expose this directly
+  document.getElementById('givenList').innerHTML = `
+    <div style="color:var(--muted);padding:24px;text-align:center;background:var(--mid);border:1px solid var(--border);border-radius:10px;line-height:1.7;">
+      <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
+      L'API Strava ne permet pas d'accéder aux kudos que <em>tu</em> as donnés.<br>
+      Cette donnée n'est disponible que dans l'app Strava officielle.<br>
+      <span style="color:var(--orange);font-size:0.82rem">Limitation de l'API publique Strava.</span>
+    </div>
+  `;
+}
+
+function renderInactive(following) {
+  // Sort by last activity date (not available directly, show them all)
+  const list = following.slice(0, 20);
+  document.getElementById('inactiveList').innerHTML = `
+    <div style="color:var(--muted);padding:24px;text-align:center;background:var(--mid);border:1px solid var(--border);border-radius:10px;line-height:1.7;margin-bottom:16px;">
+      <div style="font-size:2rem;margin-bottom:12px">📊</div>
+      L'API Strava ne donne pas accès à la date de dernière activité d'autres athlètes.<br>
+      Voici les personnes que tu suis — tu peux visiter leur profil pour voir leur activité.
+    </div>
+  ` + list.map((f, i) => `
+    <div class="athlete-row" style="animation-delay:${i*0.03}s">
+      <div class="rank">${i+1}</div>
+      ${athleteAvatar(f)}
+      <div class="athlete-info">
+        <div class="athlete-name">${f.firstname} ${f.lastname}</div>
+        <div class="athlete-meta">Tu le suis</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderGhosts(followers, kudosMap) {
+  const ghosts = followers.filter(f => !kudosMap[f.id]).slice(0, 30);
+  document.getElementById('ghostList').innerHTML = ghosts.map((f, i) => `
+    <div class="athlete-row" style="animation-delay:${i*0.03}s">
+      <div class="rank">${i+1}</div>
+      ${athleteAvatar(f)}
+      <div class="athlete-info">
+        <div class="athlete-name">${f.firstname} ${f.lastname}</div>
+        <div class="athlete-meta">Abonné — 0 interaction détectée</div>
+      </div>
+      <div class="athlete-stat">
+        <span class="badge badge-yellow">👻 Fantôme</span>
+      </div>
+    </div>
+  `).join('') || '<div style="color:var(--muted);padding:20px;text-align:center">Aucun fantôme !</div>';
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function reset() {
+  accessToken = null;
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('connectPanel').style.display = 'block';
+  document.getElementById('tokenInput').value = '';
+  document.getElementById('authCode').value = '';
+  hideError();
+}
+</script>
+</body>
+</html>
